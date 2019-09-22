@@ -1,0 +1,283 @@
+---
+title: "Map region 01 (New England) boundaries"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+---
+
+### Description
+
+Brief description.
+
+Data sources:
+
+1. https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html
+2. https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2018&layergroup=County+Subdivisions *(preferred)*
+3. SELECTED ECONOMIC CHARACTERISTICS 2013-2017 American Community Survey 5-Year Estimates: 2017 latest year available at 
+
+Coding outline:
+
+1. 
+2. 
+3. 
+4. 
+
+
+
+### Load packages
+
+```{r message=FALSE}
+
+# # googlesheets4 can work with googledrive to get a specific worksheet in a google sheet
+# # it's currently in development, get devtools, uncomment and run this first if needed:
+# devtools::install_github("tidyverse/googlesheets4")
+
+library(dplyr)
+library(sf)
+library(fs)
+library(googledrive)
+library(googlesheets4)
+library(readr)
+library(data.table)
+library(lubridate)
+library(jtools)
+
+```
+
+
+### Unzip data (if needed)
+
++ if already have, can change `overwrite = FALSE`
+
+```{r warning=FALSE}
+
+zipdir1 <- dir_ls("../../data/epa01/cosub/vector/zipped", glob = "*.zip")
+
+
+tempdir1 <- tempdir()
+
+for(i in 1:length(zipdir1)) {
+unzip(zipdir1[i],
+      exdir = tempdir1,
+      junkpaths = TRUE,
+      overwrite = FALSE)
+}
+
+# unzipped shapefile dir
+shpdir <- dir_ls(tempdir1, glob = "*.shp") 
+
+shpdir %>% 
+  basename()
+
+```
+
+### Load shapefiles to a list object
+
++ `st_cast` b/c one (RI) is polygon, not multipolygon (affects later merge)
++ `st_transform` geographic coordinate reference system transformed to UTM meters
+
+```{r}
+
+shp_list <- list()
+
+for(i in 1:length(shpdir)) {
+  shp <- st_read(shpdir[i], stringsAsFactors = FALSE, quiet = TRUE) %>% 
+    st_cast("MULTIPOLYGON")
+  shp <- st_transform(shp, crs = 26918)
+  shp_list[[i]] <- shp
+}
+
+names(shp_list) <- basename(shpdir)
+
+names(shp_list)
+
+state_byfips <- c("CT", "ME", "MA", "NH", "RI", "VT")
+
+names(shp_list) <- state_byfips
+
+names(shp_list)
+
+```
+
+
++ merge list of shapes
+
+```{r}
+
+# shp_list[[5]] %>% st_cast("MULTIPOLYGON")
+
+shape_combined <- st_as_sf(data.table::rbindlist(shp_list))
+
+```
+
++ update extent (data.table merge doesn't do it?)
+
+```{r}
+bbox_vals <- list()
+for(i in 1:length(shp_list)){
+  bbox <- shp_list[[i]] %>% st_bbox
+  min_x <- bbox[[1]]
+  min_y <- bbox[[2]]
+  max_x <- bbox[[3]]
+  max_y <- bbox[[4]]
+  bbox_vals[[i]] <- cbind(min_x, min_y, max_x, max_y)
+}
+
+bbox_vals <- data.frame(do.call(rbind, bbox_vals))
+
+new_bb <- c(xmin = min(bbox_vals[,1]), ymin = min(bbox_vals$min_y), 
+            xmax = max(bbox_vals$max_x), ymax = max(bbox_vals$max_y))
+
+attr(st_geometry(shape_combined), "bbox") <- new_bb
+
+st_bbox(shape_combined)
+
+```
+
+```{r}
+plot(shape_combined["STATEFP"])
+```
+
+
+### Export
+
+```{r}
+
+shape_combined %>%
+  st_write("../../data/epa01_cosub2018.geojson")
+
+```
+
+
+
+
+
+
+
+
+### Load locations data (try to do this in another repo, having the list seems useful for subsetting the join)
+
+
+*(from water shared drive, need to login/authenticate in web browser when run)*
+
+```{r}
+
+# # another way, but also can explore what's in the drive (includes any shared files)
+# gdfiles <- drive_find(pattern = "Water", type = "spreadsheet")
+# gdfiles$name
+# gdfiles$id
+
+locations_dat <- drive_get("WaterSystem_Locations") %>% 
+  read_sheet(sheet = "Region01")
+
+```
+
+### Create spatial points
+
+*same coordinate reference system as county subdivisions*
+
+```{r}
+
+st_crs(shp_list[[1]])
+
+locations_pts <- st_as_sf(locations_dat, coords = c("LON", "LAT"), crs = 4163) %>% 
+  st_transform(crs = st_crs(shp_list[[1]]))
+
+```
+
+
+### Combine them (join points state by state)
+
+see: 
+https://ryanpeek.github.io/mapping-in-R-workshop/vig_spatial_joins.html
+
+```{r}
+
+# Note: this skips PRIMACY_AGENCY_CODE "01", only 1 so will do them later
+
+joined_list <- list()
+
+for(i in 1:length(state_byfips)) {
+  joined <- locations_pts %>% 
+    filter(PRIMACY_AGENCY_CODE == state_byfips[i]) %>% 
+    st_join(., left = TRUE, shp_list[[state_byfips[i]]]) %>% 
+    st_drop_geometry()
+  joined_list[[i]] <- joined
+  
+}
+
+names(joined_list) <- state_byfips
+
+joined_df <- do.call(bind_rows, joined_list)
+
+# check if any not matched
+sum(is.na(joined_df$INTPTLAT))
+
+joined_df %>% filter(is.na(joined_df$INTPTLAT))
+
+locations_dat %>% filter(PWSID == "MA2115001")
+
+# 42.70396, -71.60161 appears to be bad, over border in NH
+
+```
+
+### View and export
+
+```{r}
+
+# put in github data folder eventually?
+
+joined_df %>% 
+  select(PRIMACY_AGENCY_CODE:PWSID, GEOID:NAME) %>% 
+  head()
+
+dir_create("C:/temp/CFB/data/processed")
+
+joined_df %>% write_csv("C:/temp/CFB/data/processed/r01_pwsid_cosub.csv")
+
+```
+
+### Join combined shape to census data (do in spatial repo?)
+
+*need better process/location for this, maybe combine first and add to Github data processed (along with spatial data?)*
+
+```{r warning=FALSE}
+
+zipdir2 <- dir_ls("C:/temp/CFB/table/zipped", glob = "*.zip")
+
+for(i in 1:length(zipdir2)) {
+unzip(zipdir2[i],
+      exdir = paste0("C:/temp/CFB/table/unzipped", "/", "folder", i),
+      junkpaths = TRUE,
+      overwrite = FALSE)
+}
+
+
+census_files <- dir_ls("C:/temp/CFB/table/unzipped", 
+                       recurse = TRUE, 
+                       glob = "*ACS_17_5YR_DP03.csv")
+
+census_list <- list()
+for(i in 1:length(census_files)){
+  dat <- read_csv(census_files[i], col_types = cols(.default = "c"))
+  census_list[[i]] <- dat
+}
+
+census_dat <- do.call(bind_rows, census_list)
+
+# lots of columns, trim down and convert to numeric where necessary
+
+# HC03_VC161,Percent; PERCENTAGE OF FAMILIES AND PEOPLE WHOSE INCOME IN THE PAST 12 MONTHS IS BELOW THE POVERTY LEVEL - All families
+
+census_dat1 <- census_dat %>% 
+  select(GEO.id, GEO.id2, HC03_VC161, HC01_VC85) %>% 
+  mutate(HC03_VC161 = as.numeric(HC03_VC161),
+         HC01_VC85 = as.numeric(HC01_VC85))
+
+```
+
+
+
+
