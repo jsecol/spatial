@@ -76,7 +76,7 @@ shpdir %>%
 ### Load shapefiles to a list object
 
 + `st_cast` b/c one (RI) is polygon, not multipolygon (affects later merge)
-+ `st_transform` geographic coordinate reference system transformed to UTM meters
++ don't `st_transform` geographic coordinate reference system transformed to UTM meters
 
 ```{r}
 
@@ -85,7 +85,7 @@ shp_list <- list()
 for(i in 1:length(shpdir)) {
   shp <- st_read(shpdir[i], stringsAsFactors = FALSE, quiet = TRUE) %>% 
     st_cast("MULTIPOLYGON")
-  shp <- st_transform(shp, crs = 26918)
+#  shp <- st_transform(shp, crs = 26918)
   shp_list[[i]] <- shp
 }
 
@@ -98,6 +98,8 @@ state_byfips <- c("CT", "ME", "MA", "NH", "RI", "VT")
 names(shp_list) <- state_byfips
 
 names(shp_list)
+
+st_crs(shp_list[[1]])
 
 ```
 
@@ -146,7 +148,8 @@ plot(shape_combined["STATEFP"])
 ```{r}
 
 shape_combined %>%
-  st_write("../../data/epa01_cosub2018.geojson")
+  st_write("../../data/epa01_cosub2018.geojson", 
+           delete_dsn = TRUE)
 
 ```
 
@@ -279,5 +282,18 @@ census_dat1 <- census_dat %>%
 ```
 
 
+#### OK, can get it "raw"
 
+https://raw.githack.com/
+
+> "raw.githack.com acts as a caching proxy, forwarding requests to GitHub, Bitbucket or GitLab, caching the responses either for a short time (in the case of development URLs) or permanently (in the case of CDN URLs), and relaying them to your browser with the correct Content-Type headers. The caching layer ensures that minimal load is placed on GitHub, Bitbucket or GitLab, and you get quick and easy static file hosting right from a repo."
+
+
+```{r}
+tmp <- st_read("https://raw.githack.com/jsecol/spatial/master/data/epa01_cosub2018.geojson")
+```
+
+```{r}
+plot(tmp["STATEFP"])
+```
 
