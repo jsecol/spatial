@@ -1,0 +1,87 @@
+---
+title: "Map region 01 (New England) SDWIS Water Systems"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+---
+
+### Description
+
+Brief description.
+
+Data sources:
+
+1. 
+
+Coding outline:
+
+1. 
+2. 
+3. 
+4. 
+
+
+
+### Load packages
+
+```{r message=FALSE}
+
+# # googlesheets4 can work with googledrive to get a specific worksheet in a google sheet
+# # it's currently in development, get devtools, uncomment and run this first if needed:
+# devtools::install_github("tidyverse/googlesheets4")
+
+library(dplyr)
+library(sf)
+library(fs)
+library(googledrive)
+library(googlesheets4)
+library(readr)
+
+```
+
+
+
+### Load locations data
+
+* From water shared drive
+    + need to login/authenticate in web browser when run
+
+```{r}
+
+# # another way, but also can explore what's in the drive (includes any shared files)
+# gdfiles <- drive_find(pattern = "Water", type = "spreadsheet")
+# gdfiles$name
+# gdfiles$id
+
+locations_dat <- drive_get("WaterSystem_Locations") %>% 
+  read_sheet(sheet = "Region01")
+
+head(locations_dat)
+
+```
+
+### Create spatial points
+
+
+```{r}
+
+locations_pts <- st_as_sf(locations_dat, coords = c("LON", "LAT"), crs = 4163)
+
+st_crs(locations_pts)
+
+```
+
+
+### Export
+
+```{r}
+
+locations_pts %>%
+  st_write("../../data/epa01_watersystems.geojson", 
+           delete_dsn = TRUE)
+
+```
+
+
