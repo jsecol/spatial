@@ -216,7 +216,7 @@ head(census_dat1)
 *a few missing*
 
 ```{r}
-epa01_cosub2018 <- epa01_cosub2018 %>% 
+epa01_cosub2018 <- shape_combined %>% 
   left_join(., census_dat1, by = c("GEOID" = "GEO.id2"))
 
 summary(epa01_cosub2018$HC03_VC161)
