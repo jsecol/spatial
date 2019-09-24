@@ -143,11 +143,107 @@ plot(shape_combined["STATEFP"])
 ```
 
 
+
+
+### Load US Census data
+
+* There appears to be no API for US Census county subdivision data on American FactFinder, so resorted to downloading individual .zip files for each state (adding state abbreviation to the .zip filename b/c all named the same (ugh!)), then combining them.
+    + Used advanced search at: [American FactFinder](https://factfinder.census.gov/faces/nav/jsf/pages/searchresults.xhtml?refresh=t)   *warning: American FactFinder scheduled to go away spring 2020, the new site https://data.census.gov/cedsci/ maybe can be scraped*
+    + Table name: DP03 - SELECTED ECONOMIC CHARACTERISTICS
+    + Saved them to a temp folder ("C:/temp/CFB/table/zipped")
+
+* for `unzip` if already have, can change `overwrite = FALSE`
+
+* *maybe add combined table w/columns of interest to Github data processed*
+
+```{r warning=FALSE}
+
+zipdir2 <- dir_ls("../../data/epa01/cosub/table/zipped", glob = "*.zip")
+
+
+tempdir2 <- tempdir()
+
+
+
+# zipdir1 <- dir_ls("C:/temp/CFB/table/zipped", glob = "*.zip")
+# 
+# tempdir1 <- tempdir()
+
+for(i in 1:length(zipdir2)) {
+unzip(zipdir2[i],
+      exdir = paste0(tempdir2, "/", "folder", i),
+      junkpaths = TRUE,
+      overwrite = FALSE)
+}
+
+
+census_files <- dir_ls(tempdir2, 
+                       recurse = TRUE, 
+                       glob = "*ACS_17_5YR_DP03.csv")
+
+census_list <- list()
+for(i in 1:length(census_files)){
+  dat <- read_csv(census_files[i], col_types = cols(.default = "c"))
+  census_list[[i]] <- dat
+}
+
+census_dat <- do.call(bind_rows, census_list)
+
+dim(census_dat)
+
+```
+
+
+* lots of columns, trim down and convert to numeric where necessary
+    + HC03_VC161, Percent; PERCENTAGE OF FAMILIES AND PEOPLE WHOSE INCOME IN THE PAST 12 MONTHS IS BELOW THE POVERTY LEVEL - All families
+    + HC01_VC85, Estimate; INCOME AND BENEFITS (IN 2017 INFLATION-ADJUSTED DOLLARS) - Total households - Median household income (dollars)
+
+
+```{r}
+
+census_dat1 <- census_dat %>% 
+  select(GEO.id, GEO.id2, HC03_VC161, HC01_VC85) %>% 
+  mutate(HC03_VC161 = as.numeric(HC03_VC161),
+         HC01_VC85 = as.numeric(HC01_VC85))
+
+# GEO.id2 matches to epa01_cosub2018:GEOID
+head(census_dat1)
+
+```
+
+### Do US Census data join
+
+*a few missing*
+
+```{r}
+epa01_cosub2018 <- epa01_cosub2018 %>% 
+  left_join(., census_dat1, by = c("GEOID" = "GEO.id2"))
+
+summary(epa01_cosub2018$HC03_VC161)
+summary(epa01_cosub2018$HC01_VC85)
+
+```
+
+
+
+### Map example
+
++ Will do this with better color map (maybe ggplot and/or tmap-static)
+
+
+```{r}
+
+plot(epa01_cosub2018["HC03_VC161"])
+
+```
+
+
+
 ### Export
 
 ```{r}
 
-shape_combined %>%
+epa01_cosub2018 %>%
   st_write("../../data/epa01_cosub2018.geojson", 
            delete_dsn = TRUE)
 
