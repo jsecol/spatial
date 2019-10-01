@@ -1,0 +1,103 @@
+---
+title: "Get extreme rainfall prediction data for epa region 01 county subdivisions"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r opts, echo = FALSE}
+knitr::opts_chunk$set(
+  fig.path = "md_files/extract_env1_epa01_cosub2018/"
+)
+```
+
+### Description
+
+Get an environmental dataset that can be joined to epa01_cosub2018.geojson
+
+Data sources:
+
+1. center coordinates from data/epa01_cosub2018.geojson
+2. download from [spatial grid: extreme rainfall projections](http://precip.eas.cornell.edu/)
+
+Coding outline:
+
+1. Load and view spatial (vector and grid) data
+2. Extract grid data and export it
+
+### Load packages
+
+```{r}
+
+library(dplyr)
+library(readr)
+library(raster)
+library(sf)
+
+```
+
+### Load data
+
+```{r}
+
+epa01_cosub2018 <- 
+  st_read("../../data/epa01_cosub2018.geojson", 
+          stringsAsFactors = FALSE)
+
+tmpdir <- tempdir()
+unzip(zipfile = "../../data/raster/asc/rpe_1d_1y.zip", exdir = tmpdir)
+
+rpe_1d_1y <- raster(paste0(tmpdir, "/rpe_1d_1y.asc")) %>% 
+  readAll()
+
+rpe_1d_1y
+
+```
+
+```{r}
+
+plot(rpe_1d_1y)
+plot(st_geometry(epa01_cosub2018), add = TRUE)
+
+```
+
+
+```{r}
+
+epa01_cosub2018pts <- epa01_cosub2018 %>% 
+  mutate(INTPTLAT = as.numeric(INTPTLAT),
+         INTPTLON = as.numeric(INTPTLON)) %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(GEOID, INTPTLAT, INTPTLON)
+
+head(epa01_cosub2018pts)
+
+```
+
+### Extract
+
+```{r}
+
+locations_rpe_1d_1y <-
+  extract(x = rpe_1d_1y,
+          y = epa01_cosub2018pts[, c("INTPTLON", "INTPTLAT")],
+          method = "bilinear")
+
+epa01_cosub2018_df <- 
+  data.frame(epa01_cosub2018pts, rpe_1d_1y = locations_rpe_1d_1y)
+
+head(epa01_cosub2018_df)
+
+```
+
+### Export
+
+```{r}
+
+epa01_cosub2018_df %>% 
+  write_csv("../../data/epa01_cosub2018_rain.csv")
+
+```
+
