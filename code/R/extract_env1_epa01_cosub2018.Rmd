@@ -78,6 +78,10 @@ head(epa01_cosub2018pts)
 
 ### Extract
 
+
+*divide by 1000 to get inches (see GIS Data Files in http://precip.eas.cornell.edu/help/index.html)*
+
+
 ```{r}
 
 locations_rpe_1d_1y <-
@@ -86,7 +90,7 @@ locations_rpe_1d_1y <-
           method = "bilinear")
 
 epa01_cosub2018_df <- 
-  data.frame(epa01_cosub2018pts, rpe_1d_1y = locations_rpe_1d_1y)
+  data.frame(epa01_cosub2018pts, rpe_1d_1y = locations_rpe_1d_1y/1000)
 
 head(epa01_cosub2018_df)
 
